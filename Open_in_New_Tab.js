@@ -11,7 +11,7 @@
 // @run-at       document-start
 // ==/UserScript==
 
-(function () {
+(() => {
   'use strict';
   const fixLinks = () => {
     document.querySelectorAll('a[target="_top"]').forEach(link => {
