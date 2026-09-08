@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Google Apps Links - Open in New Tab
 // @namespace    srazzano
-// @version      1.3.8
-// @description  Forces Google apps menu (9 dots) links to open in new tabs
+// @version      1.4.0
+// @description  Forces Google Main Page and Search Results Page links to open in new tabs
 // @license      MIT
 // @author       Sonny Razzano a.k.a. srazzano
 // @icon         https://raw.githubusercontent.com/Razzano/Images/master/googleicon64.png
@@ -15,19 +15,19 @@
 
   'use strict';
 
-  // ===================================================================================================
-  // DEFAULT SETTINGS
-  // ===================================================================================================
+  // =============================================================================================================
+  // DEFAULT SETTINGS TRUE/1 OR FALSE/0
+  // =============================================================================================================
 
-  let allLinksInNewTab = true; // true/1 of false/0
-  let organizeAppLinks = true; // true/1 of false/0
+  const LINKS_IN_NEW_TAB = true;
+  const ORGANIZE_LINKS = true;
 
-  // ===================================================================================================
+  // =============================================================================================================
   // LINKS IN NEW TAB WITH OBSERVER
-  // ===================================================================================================
+  // =============================================================================================================
 
   const linkTarget = () => {
-    if (!allLinksInNewTab) return;
+    if (!LINKS_IN_NEW_TAB) return;
     document.querySelectorAll('a[href]').forEach(link => {
       if (link.target !== '_blank') {
         link.target = '_blank';
@@ -50,7 +50,7 @@
   };
 
   const observeLinkTarget = () => {
-    if (!allLinksInNewTab) return;
+    if (!LINKS_IN_NEW_TAB) return;
     linkTarget();
     const observer = new MutationObserver(linkTarget);
     observer.observe(document.body, {
@@ -60,7 +60,7 @@
   };
 
   document.addEventListener('click', (e) => {
-    if (!allLinksInNewTab) return;
+    if (!LINKS_IN_NEW_TAB) return;
     const link = e.target.closest('a');
     if (!link) return;
     if (link.closest('.gb_A, .apps-menu, [role="menu"]') || (link.href.includes('google.com') &&
@@ -72,13 +72,13 @@
     }
   }, true);
 
-  // ===================================================================================================
+  // =============================================================================================================
   // ORGANIZE LINKS WITH OBSERVER
-  // ===================================================================================================
+  // =============================================================================================================
 
   const reorderGoogleApps = () => {
-    const appOrder1 = ['Earth', 'YouTube', 'Maps', 'Play', 'Translate', 'Photos', 'Calendar', 'Contacts'];
-    const appOrder2 = ['Account', 'Chrome Web Store', 'Books', 'Blogger', 'Chat', 'Drive'];
+    const appOrder1 = ['Earth', 'Calendar', 'Contacts', 'Maps', 'News', 'Photos', 'Play', 'Translate', 'YouTube'];
+    const appOrder2 = ['Account', 'Arts and Culture', 'Books', 'Blogger', 'Chat', 'Chrome Web Store', 'Drive'];
     const getApps = order => order.map(name =>
       document.querySelector(`li[data-is-draggable="true"] span[data-text="${name}"]`)?.closest('li')
     );
@@ -93,22 +93,24 @@
     apps1.reverse().forEach(app => menu2.prepend(app));
     apps2.reverse().forEach(app => menu1.prepend(app));
     GM_addStyle(`
-      #yDmH0d div.o83JEf > div.LVal7b.nq7pOb button { display: none !important; }
+      #yDmH0d div.LVal7b.nq7pOb { box-shadow: inset 0px 0px 6px rgba(255 255 255 / 0.5) !important; }
+      #yDmH0d div.LVal7b.nq7pOb button { display: none !important; }
+      #yDmH0d div.LVal7b.nq7pOb a:hover { background: rgba(120 120 120 / 0.2) !important; }
     `);
   };
 
   const observeReorderGoogleApps = () => {
-    if (!organizeAppLinks) return;
+    if (!ORGANIZE_LINKS) return;
     const observer = new MutationObserver(reorderGoogleApps);
     observer.observe(document.body, {
       childList: true,
-      subtree: true
+      subtree: true,
     });
   };
 
-  // ===================================================================================================
-  // SHARED CODE
-  // ===================================================================================================
+  // =============================================================================================================
+  // INITIATE SHARED CODE
+  // =============================================================================================================
 
   if (document.body) {
     observeLinkTarget();
