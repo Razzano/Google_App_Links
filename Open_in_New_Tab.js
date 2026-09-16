@@ -100,6 +100,7 @@
       e.stopImmediatePropagation();
       openSearch();
     }, true);
+    let suppressSuggestionClick = false;
     document.addEventListener('mousedown', (e) => {
       if (!LINKS_IN_NEW_TAB) return;
       if (e.button !== 0) return;
@@ -115,7 +116,16 @@
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      window.open(`https://www.google.com/search?q=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+      suppressSuggestionClick = true;
+      window.open(`https://www.google.com/search?q=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer'
+      );
+    }, true);
+    document.addEventListener('click', (e) => {
+      if (!suppressSuggestionClick) return;
+      suppressSuggestionClick = false;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
     }, true);
   };
 
