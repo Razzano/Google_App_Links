@@ -72,6 +72,55 @@
     }
   }, true);
 
+  const applySearchTarget = () => {
+    const searchBox = document.querySelector('textarea[name="q"]');
+    if (!searchBox) return;
+    const openSearch = () => {
+      if (!LINKS_IN_NEW_TAB) return;
+      const query = searchBox.value.trim();
+      if (!query) return;
+      window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer');
+    };
+    searchBox.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.shiftKey) return;
+      if (!LINKS_IN_NEW_TAB) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      openSearch();
+    }, true);
+    document.addEventListener('click', (e) => {
+      if (!LINKS_IN_NEW_TAB) return;
+      const button = e.target.closest('input[type="submit"], button');
+      if (!button) return;
+      const form = button.closest('form');
+      if (!form || !form.contains(searchBox)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      openSearch();
+    }, true);
+    document.addEventListener('mousedown', (e) => {
+      if (!LINKS_IN_NEW_TAB) return;
+      if (e.button !== 0) return;
+      const menuItem = e.target.closest('li');
+      if (!menuItem) return;
+      const span = e.target.closest('span');
+      if (!span || !menuItem.contains(span)) return;
+      const text = span.textContent.trim();
+      if (!text) return;
+      if (text === 'See more' || text === 'Delete') return;
+      const searchBox = document.querySelector('textarea[name="q"]');
+      if (!searchBox) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      window.open(`https://www.google.com/search?q=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+    }, true);
+  };
+
+  applySearchTarget();
+
   // =============================================================================================================
   // ORGANIZE LINKS WITH OBSERVER
   // =============================================================================================================
