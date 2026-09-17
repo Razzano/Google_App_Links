@@ -2,7 +2,7 @@
 // @name         Google Apps Links - Open in New Tab
 // @namespace    srazzano
 // @version      1.4.0
-// @description  Forces Google Main Page and Search Results Page links to open in new tabs
+// @description  Forces Google Main Page links to open in new tabs
 // @license      MIT
 // @author       Sonny Razzano a.k.a. srazzano
 // @icon         https://raw.githubusercontent.com/Razzano/Images/master/googleicon64.png
@@ -72,7 +72,7 @@
     }
   }, true);
 
-  const applySearchTarget = () => {
+  const searchTarget = () => {
     const searchBox = document.querySelector('textarea[name="q"]');
     if (!searchBox) return;
     const openSearch = () => {
@@ -111,7 +111,6 @@
       const text = span.textContent.trim();
       if (!text) return;
       if (text === 'See more' || text === 'Delete') return;
-      const searchBox = document.querySelector('textarea[name="q"]');
       if (!searchBox) return;
       e.preventDefault();
       e.stopPropagation();
@@ -128,8 +127,6 @@
       e.stopImmediatePropagation();
     }, true);
   };
-
-  applySearchTarget();
 
   // =============================================================================================================
   // ORGANIZE LINKS WITH OBSERVER
@@ -174,10 +171,12 @@
   if (document.body) {
     observeLinkTarget();
     observeReorderGoogleApps();
+    searchTarget();
   } else {
     document.addEventListener('DOMContentLoaded', () => {
       observeLinkTarget();
       observeReorderGoogleApps();
+      searchTarget();
     }, { once: true });
   }
 
