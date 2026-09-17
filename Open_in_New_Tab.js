@@ -26,7 +26,7 @@
   // LINKS IN NEW TAB WITH OBSERVER
   // =============================================================================================================
 
-  const linkTarget = () => {
+  const appLinkTarget = () => {
     if (!LINKS_IN_NEW_TAB) return;
     document.querySelectorAll('a[href]').forEach(link => {
       if (link.target !== '_blank') {
@@ -49,10 +49,10 @@
     });
   };
 
-  const observeLinkTarget = () => {
+  const observeAppLinkTarget = () => {
     if (!LINKS_IN_NEW_TAB) return;
-    linkTarget();
-    const observer = new MutationObserver(linkTarget);
+    appLinkTarget();
+    const observer = new MutationObserver(appLinkTarget);
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -72,7 +72,7 @@
     }
   }, true);
 
-  const searchTarget = () => {
+  const searchLinkTarget = () => {
     const searchBox = document.querySelector('textarea[name="q"]');
     if (!searchBox) return;
     const openSearch = () => {
@@ -169,14 +169,14 @@
   // =============================================================================================================
 
   if (document.body) {
-    observeLinkTarget();
+    observeAppLinkTarget();
     observeReorderGoogleApps();
-    searchTarget();
+    searchLinkTarget();
   } else {
     document.addEventListener('DOMContentLoaded', () => {
-      observeLinkTarget();
+      observeAppLinkTarget();
       observeReorderGoogleApps();
-      searchTarget();
+      searchLinkTarget();
     }, { once: true });
   }
 
