@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google Apps Links - Open in New Tab
 // @namespace    srazzano
-// @version      1.4.0
+// @version      1.4.3
 // @description  Forces Google Main Page links to open in new tabs
 // @license      MIT
 // @author       Sonny Razzano a.k.a. srazzano
@@ -9,25 +9,81 @@
 // @match        https://*.google.com/*
 // @match        https://google.com/*
 // @grant        GM_addStyle
+// @grant        GM_getValue
 // ==/UserScript==
 
 (() => {
 
   'use strict';
 
+  // ==============================================================================================================
+  // DEFAULT SETTINGS: 1 0R TRUE else 0 OR FALSE
+  // ==============================================================================================================
+
+  const ALL_LINKS_IN_NEW_TAB = true;
+  const ORGANIZE_MENU_APPS = true;
+
   // =============================================================================================================
-  // DEFAULT SETTINGS TRUE/1 OR FALSE/0
+  // TEXTAREA SEARCH RESULTS IN NEW TAB
   // =============================================================================================================
 
-  const LINKS_IN_NEW_TAB = true;
-  const ORGANIZE_LINKS = true;
+  const searchResultsTarget = () => {
+    if (!ALL_LINKS_IN_NEW_TAB) return;
+    const searchBox = document.querySelector('textarea[name="q"]');
+    if (!searchBox) return;
+    const openSearch = () => {
+      const query = searchBox.value.trim();
+      if (!query) return;
+      window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer');
+    };
+    searchBox.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.shiftKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      openSearch();
+    }, true);
+    let suppressSuggestionClick = false;
+    document.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      const menuItem = e.target.closest('li');
+      if (!menuItem) return;
+      const span = e.target.closest('span');
+      if (!span || !menuItem.contains(span)) return;
+      const text = span.textContent.trim();
+      if (!text) return;
+      if (text === 'See more' || text === 'Delete') return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      suppressSuggestionClick = true;
+      window.open(`https://www.google.com/search?q=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+    }, true);
+    document.addEventListener('click', (e) => {
+      if (suppressSuggestionClick) {
+        suppressSuggestionClick = false;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        return;
+      }
+      const button = e.target.closest('input[type="submit"], button');
+      if (!button) return;
+      const form = button.closest('form');
+      if (!form || !form.contains(searchBox)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      openSearch();
+    }, true);
+  };
 
   // =============================================================================================================
-  // LINKS IN NEW TAB WITH OBSERVER
+  // APP LINKS IN NEW TAB WITH OBSERVER
   // =============================================================================================================
 
   const appLinkTarget = () => {
-    if (!LINKS_IN_NEW_TAB) return;
+    if (!ALL_LINKS_IN_NEW_TAB) return;
     document.querySelectorAll('a[href]').forEach(link => {
       if (link.target !== '_blank') {
         link.target = '_blank';
@@ -50,7 +106,7 @@
   };
 
   const observeAppLinkTarget = () => {
-    if (!LINKS_IN_NEW_TAB) return;
+    if (!ALL_LINKS_IN_NEW_TAB) return;
     appLinkTarget();
     const observer = new MutationObserver(appLinkTarget);
     observer.observe(document.body, {
@@ -60,7 +116,7 @@
   };
 
   document.addEventListener('click', (e) => {
-    if (!LINKS_IN_NEW_TAB) return;
+    if (!ALL_LINKS_IN_NEW_TAB) return;
     const link = e.target.closest('a');
     if (!link) return;
     if (link.closest('.gb_A, .apps-menu, [role="menu"]') || (link.href.includes('google.com') &&
@@ -72,67 +128,13 @@
     }
   }, true);
 
-  const searchLinkTarget = () => {
-    const searchBox = document.querySelector('textarea[name="q"]');
-    if (!searchBox) return;
-    const openSearch = () => {
-      if (!LINKS_IN_NEW_TAB) return;
-      const query = searchBox.value.trim();
-      if (!query) return;
-      window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer');
-    };
-    searchBox.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter' || e.shiftKey) return;
-      if (!LINKS_IN_NEW_TAB) return;
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      openSearch();
-    }, true);
-    document.addEventListener('click', (e) => {
-      if (!LINKS_IN_NEW_TAB) return;
-      const button = e.target.closest('input[type="submit"], button');
-      if (!button) return;
-      const form = button.closest('form');
-      if (!form || !form.contains(searchBox)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      openSearch();
-    }, true);
-    let suppressSuggestionClick = false;
-    document.addEventListener('mousedown', (e) => {
-      if (!LINKS_IN_NEW_TAB) return;
-      if (e.button !== 0) return;
-      const menuItem = e.target.closest('li');
-      if (!menuItem) return;
-      const span = e.target.closest('span');
-      if (!span || !menuItem.contains(span)) return;
-      const text = span.textContent.trim();
-      if (!text) return;
-      if (text === 'See more' || text === 'Delete') return;
-      if (!searchBox) return;
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      suppressSuggestionClick = true;
-      window.open(`https://www.google.com/search?q=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer'
-      );
-    }, true);
-    document.addEventListener('click', (e) => {
-      if (!suppressSuggestionClick) return;
-      suppressSuggestionClick = false;
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-    }, true);
-  };
 
   // =============================================================================================================
-  // ORGANIZE LINKS WITH OBSERVER
+  // ORGANIZE GOOGLE MENU APPS WITH OBSERVER
   // =============================================================================================================
 
-  const reorderGoogleApps = () => {
+  const organizeGoogleApps = () => {
+    if (!ORGANIZE_MENU_APPS) return;
     const appOrder1 = ['Earth', 'Calendar', 'Contacts', 'Maps', 'News', 'Photos', 'Play', 'Translate', 'YouTube'];
     const appOrder2 = ['Account', 'Arts and Culture', 'Books', 'Blogger', 'Chat', 'Chrome Web Store', 'Drive'];
     const getApps = order => order.map(name =>
@@ -152,12 +154,13 @@
       #yDmH0d div.LVal7b.nq7pOb { box-shadow: inset 0px 0px 6px rgba(255 255 255 / 0.5) !important; }
       #yDmH0d div.LVal7b.nq7pOb button { display: none !important; }
       #yDmH0d div.LVal7b.nq7pOb a:hover { background: rgba(120 120 120 / 0.2) !important; }
+      body#gsr #gb > div.gb_z > div:nth-child(2) { max-height: calc(-98px + 100vh); }
     `);
   };
 
-  const observeReorderGoogleApps = () => {
-    if (!ORGANIZE_LINKS) return;
-    const observer = new MutationObserver(reorderGoogleApps);
+  const observeOrganizeGoogleApps = () => {
+    if (!ORGANIZE_MENU_APPS) return;
+    const observer = new MutationObserver(organizeGoogleApps);
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -168,16 +171,12 @@
   // INITIATE SHARED CODE
   // =============================================================================================================
 
-  if (document.body) {
+  const start = () => {
+    searchResultsTarget();
     observeAppLinkTarget();
-    observeReorderGoogleApps();
-    searchLinkTarget();
-  } else {
-    document.addEventListener('DOMContentLoaded', () => {
-      observeAppLinkTarget();
-      observeReorderGoogleApps();
-      searchLinkTarget();
-    }, { once: true });
-  }
+    observeOrganizeGoogleApps();
+  };
+
+  document.body ? start() : document.addEventListener('DOMContentLoaded', start, { once: true });
 
 })();
