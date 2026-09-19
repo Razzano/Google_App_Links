@@ -9,7 +9,6 @@
 // @match        https://*.google.com/*
 // @match        https://google.com/*
 // @grant        GM_addStyle
-// @grant        GM_getValue
 // ==/UserScript==
 
 (() => {
