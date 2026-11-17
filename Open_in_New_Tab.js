@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Google Apps Links - Open in New Tab
 // @namespace    srazzano
-// @version      1.4.3
+// @version      1.4.4
 // @description  Forces Google Main Page links to open in new tabs
 // @license      MIT
 // @author       Sonny Razzano a.k.a. srazzano
 // @icon         https://raw.githubusercontent.com/Razzano/Images/master/googleicon64.png
 // @match        https://*.google.com/*
-// @match        https://google.com/*
 // @grant        GM_addStyle
+// @grant        GM_openInTab
 // ==/UserScript==
 
 (() => {
@@ -16,7 +16,7 @@
   'use strict';
 
   // ==============================================================================================================
-  // DEFAULT SETTINGS: 1 0R TRUE else 0 OR FALSE
+  // MANUAL DEFAULT SETTINGS: 1 0R true else 0 OR false
   // ==============================================================================================================
 
   const ALL_LINKS_IN_NEW_TAB = true;
@@ -108,10 +108,7 @@
     if (!ALL_LINKS_IN_NEW_TAB) return;
     appLinkTarget();
     const observer = new MutationObserver(appLinkTarget);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
+    observer.observe(document.body, { childList: true, subtree: true, });
   };
 
   document.addEventListener('click', (e) => {
@@ -123,13 +120,48 @@
       if (link.target !== '_blank') {
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
-      }
-    }
+    } }
   }, true);
 
+  // =============================================================================================================
+  // VOICE SEARCH → OPEN RESULTS IN NEW TAB
+  // =============================================================================================================
+  
+  const voiceSearchNewTab = () => {
+    if (!ALL_LINKS_IN_NEW_TAB) return;
+    const nav = unsafeWindow.navigation;
+    if (!nav) return;
+    nav.addEventListener('navigate', (e) => {
+      // Ignore back/forward, reloads, hash changes, downloads
+      if (!e.cancelable || e.hashChange || e.downloadRequest) return;
+      if (e.navigationType === 'traverse' || e.navigationType === 'reload') return;
+      // Ignore real user clicks/submits (handled elsewhere in this script)
+      //if (e.userInitiated || e.sourceElement) return;
+      let url;
+      try { url = new URL(e.destination.url); } catch { return; }
+      if (url.origin !== location.origin) return;
+      if (url.pathname !== '/search' || !url.searchParams.has('q')) return;
+      e.preventDefault();
+      GM_openInTab(url.href, { active: true, insert: true });
+    });
+    // Extra safety: intercept form submits that contain the search box
+    document.addEventListener('submit', (e) => {
+      const form = e.target;
+      if (!(form instanceof HTMLFormElement)) return;
+      const searchBox = form.querySelector('textarea[name="q"], input[name="q"]');
+      if (!searchBox) return;
+      const query = searchBox.value.trim();
+      if (!query) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+	  // active: false to open in the background
+      GM_openInTab(`https://www.google.com/search?q=${encodeURIComponent(query)}`, { active: true, insert: true });
+    }, true);
+  };
 
   // =============================================================================================================
-  // ORGANIZE GOOGLE MENU APPS WITH OBSERVER
+  // ORGANIZE GOOGLE 9 DOT MENU APPS WITH OBSERVER
   // =============================================================================================================
 
   const organizeGoogleApps = () => {
@@ -153,29 +185,34 @@
       #yDmH0d div.LVal7b.nq7pOb { box-shadow: inset 0px 0px 6px rgba(255 255 255 / 0.5) !important; }
       #yDmH0d div.LVal7b.nq7pOb button { display: none !important; }
       #yDmH0d div.LVal7b.nq7pOb a:hover { background: rgba(120 120 120 / 0.2) !important; }
-      body#gsr #gb > div.gb_z > div:nth-child(2) { max-height: calc(-98px + 100vh); }
     `);
   };
 
   const observeOrganizeGoogleApps = () => {
     if (!ORGANIZE_MENU_APPS) return;
     const observer = new MutationObserver(organizeGoogleApps);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
+    observer.observe(document.body, { childList: true, subtree: true, });
   };
 
   // =============================================================================================================
-  // INITIATE SHARED CODE
+  // START CODE
   // =============================================================================================================
 
   const start = () => {
     searchResultsTarget();
     observeAppLinkTarget();
     observeOrganizeGoogleApps();
+	voiceSearchNewTab();
   };
 
   document.body ? start() : document.addEventListener('DOMContentLoaded', start, { once: true });
+
+  // GOOGLE 9 DOT MENU GLOBAL CSS
+
+  GM_addStyle(`
+    #gb div[style*="width: 370"][style*="z-index: 991"][style*="max-width: calc("][style*="max-height: calc("] {
+      height: calc(-70px + 100dvh) !important;
+    }
+  `);
 
 })();
