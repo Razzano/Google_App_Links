@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google Apps Links - Open in New Tab
 // @namespace    srazzano
-// @version      1.4.4
+// @version      1.4.6
 // @description  Forces Google Main Page links to open in new tabs
 // @license      MIT
 // @author       Sonny Razzano a.k.a. srazzano
