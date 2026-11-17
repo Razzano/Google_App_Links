@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Google Apps Links - Open in New Tab
 // @namespace    srazzano
-// @version      1.4.7
-// @description  Forces Google Main Page links to open in new tabs (1.5.3: voice search opens via native form target=_blank, not GM_openInTab/window.open — JS-opened tabs lost audio (1.5.2: removed the 1.5.1 fallback timer and stopPropagation on voice submit — both could cut Google's voice audio (1.5.1: voice search opens in a new tab via GM_openInTab, which is not popup-blocked (1.5.0: autocomplete handler narrowed to the suggestion listbox only; media / listen / play / voice controls are never intercepted, so audio playback is not blocked)
+// @version      1.4.8
+// @description  Forces Google Main Page links to open in new tabs
 // @license      MIT
 // @author       Sonny Razzano a.k.a. srazzano
 // @icon         https://raw.githubusercontent.com/Razzano/Images/master/googleicon64.png
@@ -43,19 +43,13 @@
     window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer');
   };
 
-  // Voice search submits AFTER the mic click gesture is long gone (transcription
-  // takes seconds), so window.open() from a submit handler gets popup-blocked
-  // and the search silently goes nowhere — the 1.5.0 symptom. GM_openInTab is
-  // a privileged Tampermonkey API, not a popup, so it is not blocked.
-  // Gesture-driven opens (Enter, suggestion click, search button) keep using
-  // window.open() above so they behave exactly as before.
   const openSearchPrivileged = (text) => {
     const query = (text ?? '').trim();
     if (!query) return false;
     const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
     try {
       if (typeof GM_openInTab === 'function') { GM_openInTab(url, { active: true, insert: true }); return true; }
-    } catch (_) { /* fall through to window.open */ }
+    } catch (_) { }
     const w = window.open(url, '_blank', 'noopener,noreferrer');
     return !!w;
   };
@@ -101,14 +95,6 @@
 
   let suggestionHandled = false;
 
-  // AUDIO FIX (1.5.0): the old handler fired on ANY <li> containing a <span>
-  // anywhere on the page — including results-page rows that hold the
-  // Listen / pronunciation / Play controls. preventDefault + stopPropagation
-  // in capture phase swallowed the click before Google could start audio,
-  // so nothing played and the tab never showed its speaker icon.
-  // Now: only autocomplete suggestions (inside a listbox) are intercepted,
-  // and anything that looks like a media / listen / play / voice control
-  // always passes through untouched.
   const MEDIA_GUARD = 'audio, video, button, a[href], [role="button"], ' +
     '[aria-label*="listen" i], [aria-label*="pronounc" i], [aria-label*="play" i], ' +
     '[aria-label*="speaker" i], [aria-label*="voice" i], [aria-label*="mic" i], ' +
@@ -141,7 +127,6 @@
     }
     const button = e.target.closest('input[type="submit"], button');
     if (button) {
-      // Never hijack mic / listen / play / voice buttons — those start audio.
       if (button.closest('[aria-label*="listen" i], [aria-label*="pronounc" i], [aria-label*="play" i], [aria-label*="speaker" i], [aria-label*="voice" i], [aria-label*="mic" i], [aria-label*="speak" i], [data-ved*="voice"]')) return;
       const form = button.closest('form');
       const searchBox = document.querySelector('textarea[name="q"]');
@@ -238,11 +223,9 @@
   document.addEventListener('submit', (e) => {
     if (!ALL_LINKS_IN_NEW_TAB) return;
     if (voiceActive) {
-      // Voice: hands off completely. Native submit + target=_blank opens
-      // the new tab through Google's own navigation, preserving audio.
       setFormNewTab(e.target);
       voiceActive = false;
-      return; // let the event run — no preventDefault, no stopPropagation
+      return;
     }
     if (!isSearchForm(e.target)) return;
     e.preventDefault();
@@ -258,8 +241,6 @@
     );
     if (mic) {
       voiceActive = true;
-      // Native new-tab for voice: set the form target now, let Google's
-      // own submit do the navigation. Do NOT cancel/re-open it in JS.
       setFormNewTab(mic.closest('form') || document.querySelector('form:has(textarea[name="q"], input[name="q"])'));
     }
   }, true);
