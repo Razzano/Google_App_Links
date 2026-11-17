@@ -24,6 +24,7 @@
   const ALL_LINKS_IN_NEW_TAB = true;
   const ORGANIZE_MENU_APPS = true;
   const REMOVE_GOOGLE_SEARCH_SUFFIX = true;
+  const VOICE_SEARCH_NEW_TAB = true;
 
   const REL = 'noopener noreferrer';
 
@@ -53,10 +54,16 @@
     const w = window.open(url, '_blank', 'noopener,noreferrer');
     return !!w;
   };
-  const setFormNewTab = (form) => {
-    if (form) { try { form.target = '_blank'; } catch (_) {} }
+
+  const setFormVoiceTarget = (form) => {
+    if (!form) return form;
+    try {
+      if (VOICE_SEARCH_NEW_TAB) form.target = '_blank';
+      else form.removeAttribute('target');
+    } catch (_) {}
     return form;
   };
+
   const openFromFormPrivileged = (form) => {
     const box = form?.querySelector('textarea[name="q"], input[name="q"]');
     if (!box) return false;
@@ -102,9 +109,9 @@
   document.addEventListener('mousedown', (e) => {
     if (!ALL_LINKS_IN_NEW_TAB || e.button !== 0) return;
     suggestionHandled = false;
-    if (e.target.closest(MEDIA_GUARD)) return;               // never eat media controls
+    if (e.target.closest(MEDIA_GUARD)) return;
     const listbox = e.target.closest('ul[role="listbox"], [role="listbox"]');
-    if (!listbox) return;                                   // not autocomplete: leave it alone
+    if (!listbox) return;
     const item = e.target.closest('li');
     if (!item || !listbox.contains(item)) return;
     const span = e.target.closest('span');
@@ -203,7 +210,7 @@
     const nativeSubmit = HTMLFormElement.prototype.submit;
     HTMLFormElement.prototype.submit = function (...args) {
       if (ALL_LINKS_IN_NEW_TAB && isSearchForm(this)) {
-        if (voiceActive) { setFormNewTab(this); voiceActive = false; /* fall through to native */ }
+        if (voiceActive) { setFormVoiceTarget(this); voiceActive = false; /* fall through to native */ }
         else if (openFromForm(this)) return;
       }
       return nativeSubmit.apply(this, args);
@@ -212,7 +219,7 @@
       const nativeRequestSubmit = HTMLFormElement.prototype.requestSubmit;
       HTMLFormElement.prototype.requestSubmit = function (...args) {
         if (ALL_LINKS_IN_NEW_TAB && isSearchForm(this)) {
-          if (voiceActive) { setFormNewTab(this); voiceActive = false; /* fall through to native */ }
+          if (voiceActive) { setFormVoiceTarget(this); voiceActive = false; /* fall through to native */ }
           else if (openFromForm(this)) return;
         }
         return nativeRequestSubmit.apply(this, args);
@@ -223,7 +230,7 @@
   document.addEventListener('submit', (e) => {
     if (!ALL_LINKS_IN_NEW_TAB) return;
     if (voiceActive) {
-      setFormNewTab(e.target);
+      setFormVoiceTarget(e.target);
       voiceActive = false;
       return;
     }
@@ -241,7 +248,7 @@
     );
     if (mic) {
       voiceActive = true;
-      setFormNewTab(mic.closest('form') || document.querySelector('form:has(textarea[name="q"], input[name="q"])'));
+      setFormVoiceTarget(mic.closest('form') || document.querySelector('form:has(textarea[name="q"], input[name="q"])'));
     }
   }, true);
 
@@ -305,7 +312,7 @@
       patchFormMethods();
       fixLinksIn(document.body);
       initSearchBox();
-      for (const f of document.querySelectorAll('form')) if (isSearchForm(f)) setFormNewTab(f);
+      for (const f of document.querySelectorAll('form')) if (isSearchForm(f)) setFormVoiceTarget(f); // honours VOICE_SEARCH_NEW_TAB
     }
     if (ORGANIZE_MENU_APPS) organizeGoogleApps();
 
