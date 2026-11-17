@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Google Apps Links - Open in New Tab
 // @namespace    srazzano
-// @version      1.4.6
-// @description  Forces Google Main Page links to open in new tabs
+// @version      1.4.7
+// @description  Forces Google Main Page links to open in new tabs (1.5.3: voice search opens via native form target=_blank, not GM_openInTab/window.open — JS-opened tabs lost audio (1.5.2: removed the 1.5.1 fallback timer and stopPropagation on voice submit — both could cut Google's voice audio (1.5.1: voice search opens in a new tab via GM_openInTab, which is not popup-blocked (1.5.0: autocomplete handler narrowed to the suggestion listbox only; media / listen / play / voice controls are never intercepted, so audio playback is not blocked)
 // @license      MIT
 // @author       Sonny Razzano a.k.a. srazzano
 // @icon         https://raw.githubusercontent.com/Razzano/Images/master/googleicon64.png
@@ -43,6 +43,35 @@
     window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer');
   };
 
+  // Voice search submits AFTER the mic click gesture is long gone (transcription
+  // takes seconds), so window.open() from a submit handler gets popup-blocked
+  // and the search silently goes nowhere — the 1.5.0 symptom. GM_openInTab is
+  // a privileged Tampermonkey API, not a popup, so it is not blocked.
+  // Gesture-driven opens (Enter, suggestion click, search button) keep using
+  // window.open() above so they behave exactly as before.
+  const openSearchPrivileged = (text) => {
+    const query = (text ?? '').trim();
+    if (!query) return false;
+    const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+    try {
+      if (typeof GM_openInTab === 'function') { GM_openInTab(url, { active: true, insert: true }); return true; }
+    } catch (_) { /* fall through to window.open */ }
+    const w = window.open(url, '_blank', 'noopener,noreferrer');
+    return !!w;
+  };
+  const setFormNewTab = (form) => {
+    if (form) { try { form.target = '_blank'; } catch (_) {} }
+    return form;
+  };
+  const openFromFormPrivileged = (form) => {
+    const box = form?.querySelector('textarea[name="q"], input[name="q"]');
+    if (!box) return false;
+    const query = box.value.trim();
+    if (!query) return false;
+    voiceActive = false;
+    return openSearchPrivileged(query);
+  };
+
   const forceNewTab = (link) => {
     if (!link || link.dataset.newTabFixed) return;
     link.dataset.newTabFixed = '1';
@@ -72,11 +101,26 @@
 
   let suggestionHandled = false;
 
+  // AUDIO FIX (1.5.0): the old handler fired on ANY <li> containing a <span>
+  // anywhere on the page — including results-page rows that hold the
+  // Listen / pronunciation / Play controls. preventDefault + stopPropagation
+  // in capture phase swallowed the click before Google could start audio,
+  // so nothing played and the tab never showed its speaker icon.
+  // Now: only autocomplete suggestions (inside a listbox) are intercepted,
+  // and anything that looks like a media / listen / play / voice control
+  // always passes through untouched.
+  const MEDIA_GUARD = 'audio, video, button, a[href], [role="button"], ' +
+    '[aria-label*="listen" i], [aria-label*="pronounc" i], [aria-label*="play" i], ' +
+    '[aria-label*="speaker" i], [aria-label*="voice" i], [aria-label*="mic" i], ' +
+    '[aria-label*="speak" i], [data-ved*="voice"]';
   document.addEventListener('mousedown', (e) => {
     if (!ALL_LINKS_IN_NEW_TAB || e.button !== 0) return;
     suggestionHandled = false;
+    if (e.target.closest(MEDIA_GUARD)) return;               // never eat media controls
+    const listbox = e.target.closest('ul[role="listbox"], [role="listbox"]');
+    if (!listbox) return;                                   // not autocomplete: leave it alone
     const item = e.target.closest('li');
-    if (!item) return;
+    if (!item || !listbox.contains(item)) return;
     const span = e.target.closest('span');
     if (!span || !item.contains(span)) return;
     const text = span.textContent.trim();
@@ -97,6 +141,8 @@
     }
     const button = e.target.closest('input[type="submit"], button');
     if (button) {
+      // Never hijack mic / listen / play / voice buttons — those start audio.
+      if (button.closest('[aria-label*="listen" i], [aria-label*="pronounc" i], [aria-label*="play" i], [aria-label*="speaker" i], [aria-label*="voice" i], [aria-label*="mic" i], [aria-label*="speak" i], [data-ved*="voice"]')) return;
       const form = button.closest('form');
       const searchBox = document.querySelector('textarea[name="q"]');
       if (form && searchBox && form.contains(searchBox)) {
@@ -172,7 +218,8 @@
     const nativeSubmit = HTMLFormElement.prototype.submit;
     HTMLFormElement.prototype.submit = function (...args) {
       if (ALL_LINKS_IN_NEW_TAB && isSearchForm(this)) {
-        if (openFromForm(this)) return;
+        if (voiceActive) { setFormNewTab(this); voiceActive = false; /* fall through to native */ }
+        else if (openFromForm(this)) return;
       }
       return nativeSubmit.apply(this, args);
     };
@@ -180,7 +227,8 @@
       const nativeRequestSubmit = HTMLFormElement.prototype.requestSubmit;
       HTMLFormElement.prototype.requestSubmit = function (...args) {
         if (ALL_LINKS_IN_NEW_TAB && isSearchForm(this)) {
-          if (openFromForm(this)) return;
+          if (voiceActive) { setFormNewTab(this); voiceActive = false; /* fall through to native */ }
+          else if (openFromForm(this)) return;
         }
         return nativeRequestSubmit.apply(this, args);
       };
@@ -189,6 +237,13 @@
 
   document.addEventListener('submit', (e) => {
     if (!ALL_LINKS_IN_NEW_TAB) return;
+    if (voiceActive) {
+      // Voice: hands off completely. Native submit + target=_blank opens
+      // the new tab through Google's own navigation, preserving audio.
+      setFormNewTab(e.target);
+      voiceActive = false;
+      return; // let the event run — no preventDefault, no stopPropagation
+    }
     if (!isSearchForm(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -201,7 +256,12 @@
       '[aria-label*="voice" i], [aria-label*="mic" i], [aria-label*="Speak" i], ' +
       '[data-ved*="voice"], button[aria-label*="Search by voice" i], div[role="button"][aria-label*="voice" i]'
     );
-    if (mic) voiceActive = true;
+    if (mic) {
+      voiceActive = true;
+      // Native new-tab for voice: set the form target now, let Google's
+      // own submit do the navigation. Do NOT cancel/re-open it in JS.
+      setFormNewTab(mic.closest('form') || document.querySelector('form:has(textarea[name="q"], input[name="q"])'));
+    }
   }, true);
 
   let voiceWatchTimer = null;
@@ -264,6 +324,7 @@
       patchFormMethods();
       fixLinksIn(document.body);
       initSearchBox();
+      for (const f of document.querySelectorAll('form')) if (isSearchForm(f)) setFormNewTab(f);
     }
     if (ORGANIZE_MENU_APPS) organizeGoogleApps();
 
