@@ -9,12 +9,24 @@
 // @match        https://*.google.com/*
 // @grant        GM_addStyle
 // @grant        GM_openInTab
+// @noframes
 // ==/UserScript==
 
 (() => {
 
   'use strict';
 
+  let lastKey = '', lastTime = 0;
+  const openSearchTab = (href) => {
+    let key;
+    try { key = new URL(href, location.origin).searchParams.get('q') || href; } catch { key = href; }
+    const now = Date.now();
+    if (key === lastKey && now - lastTime < 2000) return;
+    lastKey = key;
+    lastTime = now;
+    GM_openInTab(href, { active: true, insert: true });
+  };
+  
   // ==============================================================================================================
   // MANUAL DEFAULT SETTINGS: 1 0R true else 0 OR false
   // ==============================================================================================================
@@ -33,7 +45,8 @@
     const openSearch = () => {
       const query = searchBox.value.trim();
       if (!query) return;
-      window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer');
+      //window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer');
+	  openSearchTab(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
     };
     searchBox.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' || e.shiftKey) return;
@@ -56,7 +69,8 @@
       e.stopPropagation();
       e.stopImmediatePropagation();
       suppressSuggestionClick = true;
-      window.open(`https://www.google.com/search?q=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+      //window.open(`https://www.google.com/search?q=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+	  openSearchTab(`https://www.google.com/search?q=${encodeURIComponent(text)}`);
     }, true);
     document.addEventListener('click', (e) => {
       if (suppressSuggestionClick) {
@@ -142,7 +156,8 @@
       if (url.origin !== location.origin) return;
       if (url.pathname !== '/search' || !url.searchParams.has('q')) return;
       e.preventDefault();
-      GM_openInTab(url.href, { active: true, insert: true });
+      //GM_openInTab(url.href, { active: true, insert: true });
+	  openSearchTab(url.href);
     });
     // Extra safety: intercept form submits that contain the search box
     document.addEventListener('submit', (e) => {
@@ -155,8 +170,8 @@
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-	  // active: false to open in the background
-      GM_openInTab(`https://www.google.com/search?q=${encodeURIComponent(query)}`, { active: true, insert: true });
+      //GM_openInTab(`https://www.google.com/search?q=${encodeURIComponent(query)}`, { active: true, insert: true });
+	  openSearchTab(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
     }, true);
   };
 
