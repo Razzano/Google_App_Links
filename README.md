@@ -1,6 +1,7 @@
-Forces all Google links and search look up results to open in new tabs (Tampermonkey Script)
+# Forces all Google links and search look up results to open in new tabs<br/>
 
 > [!NOTE]
+> Tampermonkey Script<br/>
 > Updated 11/17/2026 voice search in New Tab and remove " - Google Search" suffix from tab title
 
 > [!TIP]
