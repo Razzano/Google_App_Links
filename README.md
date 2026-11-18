@@ -1,4 +1,4 @@
-# Forces all Google links and search look up results to open in new tabs<br/>
+# Forces all Google links and search results to open in new tabs
 
 > [!NOTE]
 > Tampermonkey Script<br/>
