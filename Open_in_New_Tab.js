@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google Apps Links - Open in New Tab
 // @namespace    srazzano
-// @version      1.4.8
+// @version      1.4.9
 // @description  Forces Google Main Page links to open in new tabs
 // @license      MIT
 // @author       Sonny Razzano a.k.a. srazzano
@@ -102,10 +102,23 @@
 
   let suggestionHandled = false;
 
+  // AI Mode is a JS-driven mode switch inside/near the search form, not a search.
+  // If we cancel its click, it looks dead - especially with an empty search box.
+  const isAIMode = (el) => {
+    if (!el) return false;
+    const hit = el.closest?.('[aria-label*="AI Mode" i], [aria-label*="AI mode" i], [data-ved*="ai-mode" i]');
+    if (hit) return true;
+    const btn = el.closest?.('button, [role="button"], a[href]');
+    if (!btn) return false;
+    const label = ((btn.textContent || '') + ' ' + (btn.getAttribute?.('aria-label') || '')).trim();
+    return /^AI Mode$/i.test(label);
+  };
+
   const MEDIA_GUARD = 'audio, video, button, a[href], [role="button"], ' +
     '[aria-label*="listen" i], [aria-label*="pronounc" i], [aria-label*="play" i], ' +
     '[aria-label*="speaker" i], [aria-label*="voice" i], [aria-label*="mic" i], ' +
     '[aria-label*="speak" i], [data-ved*="voice"]';
+
   document.addEventListener('mousedown', (e) => {
     if (!ALL_LINKS_IN_NEW_TAB || e.button !== 0) return;
     suggestionHandled = false;
@@ -126,6 +139,7 @@
 
   document.addEventListener('click', (e) => {
     if (!ALL_LINKS_IN_NEW_TAB) return;
+    if (isAIMode(e.target)) return; // let Google handle AI Mode natively
     if (suggestionHandled) {
       suggestionHandled = false;
       e.preventDefault();
@@ -138,6 +152,7 @@
       const form = button.closest('form');
       const searchBox = document.querySelector('textarea[name="q"]');
       if (form && searchBox && form.contains(searchBox)) {
+        if (!searchBox.value.trim()) return; // empty query: not a search, let Google handle it (e.g. AI Mode)
         e.preventDefault();
         e.stopPropagation();
         openSearch(searchBox.value);
@@ -210,7 +225,7 @@
     const nativeSubmit = HTMLFormElement.prototype.submit;
     HTMLFormElement.prototype.submit = function (...args) {
       if (ALL_LINKS_IN_NEW_TAB && isSearchForm(this)) {
-        if (voiceActive) { setFormVoiceTarget(this); voiceActive = false; /* fall through to native */ }
+        if (voiceActive) { setFormVoiceTarget(this); voiceActive = false; }
         else if (openFromForm(this)) return;
       }
       return nativeSubmit.apply(this, args);
@@ -219,7 +234,7 @@
       const nativeRequestSubmit = HTMLFormElement.prototype.requestSubmit;
       HTMLFormElement.prototype.requestSubmit = function (...args) {
         if (ALL_LINKS_IN_NEW_TAB && isSearchForm(this)) {
-          if (voiceActive) { setFormVoiceTarget(this); voiceActive = false; /* fall through to native */ }
+          if (voiceActive) { setFormVoiceTarget(this); voiceActive = false; }
           else if (openFromForm(this)) return;
         }
         return nativeRequestSubmit.apply(this, args);
@@ -235,6 +250,8 @@
       return;
     }
     if (!isSearchForm(e.target)) return;
+    const box = e.target.querySelector('textarea[name="q"], input[name="q"]');
+    if (box && !box.value.trim()) return; // empty query: let Google handle mode switches
     e.preventDefault();
     e.stopPropagation();
     openFromForm(e.target);
@@ -312,7 +329,7 @@
       patchFormMethods();
       fixLinksIn(document.body);
       initSearchBox();
-      for (const f of document.querySelectorAll('form')) if (isSearchForm(f)) setFormVoiceTarget(f); // honours VOICE_SEARCH_NEW_TAB
+      for (const f of document.querySelectorAll('form')) if (isSearchForm(f)) setFormVoiceTarget(f);
     }
     if (ORGANIZE_MENU_APPS) organizeGoogleApps();
 
