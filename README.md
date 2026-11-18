@@ -2,7 +2,8 @@ Forces all Google links and search look up results to open in new tabs (Tampermo
 
 > [!NOTE]
 > Updated 11/17/2026 voice search in New Tab and remove " - Google Search" suffix from tab title
->
+
+> [!TIP]
 > Options within script (set to false for default):<br/>
 > const ALL_LINKS_IN_NEW_TAB = true;<br/>
 > const ORGANIZE_MENU_APPS = true;<br/>
