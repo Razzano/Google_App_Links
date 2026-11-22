@@ -31,46 +31,25 @@
 
   const REL = 'noopener noreferrer';
 
-  // ==========================================================================
-  // GOOGLE LENS: vsrid= results -> new tab
-  // Runs IMMEDIATELY, before DOMContentLoaded / body exists
-  // ==========================================================================
   const LENS_MARKER = 'lens_newtab=1';
 
   const isLensResultUrl = (url) => {
-  try {
-    const u = new URL(url, location.href);
-    if (!u.search.includes('vsrid=')) return false;
-
-    // Flow 1: standalone Lens site
-    // lens.google.com/v3/upload?vsrid=...
-    if (u.hostname.includes('lens.google.com')) return true;
-
-    // Flow 2: Lens embedded in Google Search — YOUR flow
-    // google.com/search?vsrid=...&vsint=...&udm=26&lns_mode=un&source=lns.web.gsbubb
-    if (u.hostname.includes('google.com') && u.pathname.startsWith('/search')) {
-      // vsrid= alone is enough — normal Google searches never have it.
-      // udm=26 / lns_mode / vsint are extra confirmation if present.
-      return true;
-    }
-
-    return false;
-  } catch (_) { return false; }
-};
+    try {
+      const u = new URL(url, location.href);
+      if (!u.search.includes('vsrid=')) return false;
+      if (u.hostname.includes('lens.google.com')) return true;
+      if (u.hostname.includes('google.com') && u.pathname.startsWith('/search')) return true;
+      return false;
+    } catch (_) { return false; }
+  };
 
   const handleLensResultImmediate = () => {
     if (!LENS_RESULTS_NEW_TAB) return false;
     if (!isLensResultUrl(location.href)) return false;
-    // This IS the new tab we already opened — do nothing
     if (location.search.includes(LENS_MARKER)) return false;
-
-    // Build new-tab URL with marker so it won't loop
     const sep = location.search.includes('?') ? '&' : '?';
     const newUrl = location.href + sep + LENS_MARKER;
-
-    // Stop this tab from finishing loading the Lens result
     try { window.stop(); } catch (_) {}
-
     let opened = false;
     try {
       if (typeof GM_openInTab === 'function') { GM_openInTab(newUrl, { active: true, insert: true }); opened = true; }
@@ -79,10 +58,7 @@
       const w = window.open(newUrl, '_blank', 'noopener,noreferrer');
       opened = !!w;
     }
-
     if (opened) {
-      // Send original tab back to Google — history.back() fails here
-      // because Lens uses location.replace(), so use replace()
       try { location.replace('https://www.google.com/'); }
       catch (_) { history.back(); }
       return true;
@@ -90,10 +66,8 @@
     return false;
   };
 
-  // *** Call it right now, don't wait for start() ***
   if (handleLensResultImmediate()) return;
 
-  // Watch for SPA navigations that add vsrid= without a full reload
   let lastLensUrl = location.href;
   const watchLensUrl = () => {
     if (location.href === lastLensUrl) return;
