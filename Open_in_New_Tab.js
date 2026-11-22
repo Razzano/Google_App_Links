@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google Apps Links - Open in New Tab
 // @namespace    srazzano
-// @version      1.5.1
+// @version      1.5.2
 // @description  Forces Google Main Page links to open in new tabs
 // @license      MIT
 // @author       Sonny Razzano a.k.a. srazzano
@@ -49,7 +49,10 @@
     if (location.search.includes(LENS_MARKER)) return false;
     const sep = location.search.includes('?') ? '&' : '?';
     const newUrl = location.href + sep + LENS_MARKER;
-    try { window.stop(); } catch (_) {}
+    // NOTE: do NOT call window.stop() here. It aborts the in-flight page load
+    // and can leave co-running page scripts (e.g. the Dashboard clock's rAF
+    // loop on a search-results page) in a half-started state. Opening the new
+    // tab first, then replacing this tab below, is sufficient.
     let opened = false;
     try {
       if (typeof GM_openInTab === 'function') { GM_openInTab(newUrl, { active: true, insert: true }); opened = true; }
