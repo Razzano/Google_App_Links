@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         Google Apps Links - Open in New Tab
 // @namespace    srazzano
-// @version      1.5.0
+// @version      1.5.1
 // @description  Forces Google Main Page links to open in new tabs
 // @license      MIT
 // @author       Sonny Razzano a.k.a. srazzano
 // @icon         https://raw.githubusercontent.com/Razzano/Images/master/googleicon64.png
 // @match        https://*.google.com/*
 // @match        https://google.com/*
+// @match        https://lens.google.com/*
+// @match        https://*.lens.google.com/*
 // @grant        GM_addStyle
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -25,8 +27,99 @@
   const ORGANIZE_MENU_APPS = true;
   const REMOVE_GOOGLE_SEARCH_SUFFIX = true;
   const VOICE_SEARCH_NEW_TAB = true;
+  const LENS_RESULTS_NEW_TAB = true;
 
   const REL = 'noopener noreferrer';
+
+  // ==========================================================================
+  // GOOGLE LENS: vsrid= results -> new tab
+  // Runs IMMEDIATELY, before DOMContentLoaded / body exists
+  // ==========================================================================
+  const LENS_MARKER = 'lens_newtab=1';
+
+  const isLensResultUrl = (url) => {
+  try {
+    const u = new URL(url, location.href);
+    if (!u.search.includes('vsrid=')) return false;
+
+    // Flow 1: standalone Lens site
+    // lens.google.com/v3/upload?vsrid=...
+    if (u.hostname.includes('lens.google.com')) return true;
+
+    // Flow 2: Lens embedded in Google Search — YOUR flow
+    // google.com/search?vsrid=...&vsint=...&udm=26&lns_mode=un&source=lns.web.gsbubb
+    if (u.hostname.includes('google.com') && u.pathname.startsWith('/search')) {
+      // vsrid= alone is enough — normal Google searches never have it.
+      // udm=26 / lns_mode / vsint are extra confirmation if present.
+      return true;
+    }
+
+    return false;
+  } catch (_) { return false; }
+};
+
+  const handleLensResultImmediate = () => {
+    if (!LENS_RESULTS_NEW_TAB) return false;
+    if (!isLensResultUrl(location.href)) return false;
+    // This IS the new tab we already opened — do nothing
+    if (location.search.includes(LENS_MARKER)) return false;
+
+    // Build new-tab URL with marker so it won't loop
+    const sep = location.search.includes('?') ? '&' : '?';
+    const newUrl = location.href + sep + LENS_MARKER;
+
+    // Stop this tab from finishing loading the Lens result
+    try { window.stop(); } catch (_) {}
+
+    let opened = false;
+    try {
+      if (typeof GM_openInTab === 'function') { GM_openInTab(newUrl, { active: true, insert: true }); opened = true; }
+    } catch (_) {}
+    if (!opened) {
+      const w = window.open(newUrl, '_blank', 'noopener,noreferrer');
+      opened = !!w;
+    }
+
+    if (opened) {
+      // Send original tab back to Google — history.back() fails here
+      // because Lens uses location.replace(), so use replace()
+      try { location.replace('https://www.google.com/'); }
+      catch (_) { history.back(); }
+      return true;
+    }
+    return false;
+  };
+
+  // *** Call it right now, don't wait for start() ***
+  if (handleLensResultImmediate()) return;
+
+  // Watch for SPA navigations that add vsrid= without a full reload
+  let lastLensUrl = location.href;
+  const watchLensUrl = () => {
+    if (location.href === lastLensUrl) return;
+    lastLensUrl = location.href;
+    handleLensResultImmediate();
+  };
+
+  const patchHistoryForLens = () => {
+    try {
+      const nativePush = history.pushState;
+      const nativeReplace = history.replaceState;
+      history.pushState = function (...args) {
+        const ret = nativePush.apply(this, args);
+        watchLensUrl();
+        return ret;
+      };
+      history.replaceState = function (...args) {
+        const ret = nativeReplace.apply(this, args);
+        watchLensUrl();
+        return ret;
+      };
+      window.addEventListener('popstate', watchLensUrl);
+      setInterval(watchLensUrl, 500);
+    } catch (_) {}
+  };
+  patchHistoryForLens();
 
   GM_addStyle(`
     #yDmH0d div.LVal7b.nq7pOb { box-shadow: inset 0px 0px 6px rgba(255 255 255 / 0.5) !important; }
@@ -102,8 +195,6 @@
 
   let suggestionHandled = false;
 
-  // AI Mode is a JS-driven mode switch inside/near the search form, not a search.
-  // If we cancel its click, it looks dead - especially with an empty search box.
   const isAIMode = (el) => {
     if (!el) return false;
     const hit = el.closest?.('[aria-label*="AI Mode" i], [aria-label*="AI mode" i], [data-ved*="ai-mode" i]');
@@ -139,7 +230,7 @@
 
   document.addEventListener('click', (e) => {
     if (!ALL_LINKS_IN_NEW_TAB) return;
-    if (isAIMode(e.target)) return; // let Google handle AI Mode natively
+    if (isAIMode(e.target)) return;
     if (suggestionHandled) {
       suggestionHandled = false;
       e.preventDefault();
@@ -152,7 +243,7 @@
       const form = button.closest('form');
       const searchBox = document.querySelector('textarea[name="q"]');
       if (form && searchBox && form.contains(searchBox)) {
-        if (!searchBox.value.trim()) return; // empty query: not a search, let Google handle it (e.g. AI Mode)
+        if (!searchBox.value.trim()) return;
         e.preventDefault();
         e.stopPropagation();
         openSearch(searchBox.value);
@@ -251,7 +342,7 @@
     }
     if (!isSearchForm(e.target)) return;
     const box = e.target.querySelector('textarea[name="q"], input[name="q"]');
-    if (box && !box.value.trim()) return; // empty query: let Google handle mode switches
+    if (box && !box.value.trim()) return;
     e.preventDefault();
     e.stopPropagation();
     openFromForm(e.target);
