@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Google Apps Links - Open in New Tab
 // @namespace    srazzano
-// @version      1.5.3
-// @description  Forces Google Main Page links to open in new tabs
+// @version      1.6.1
+// @description  Forces Google Home Page links to open in new tabs
 // @license      MIT
 // @author       Sonny Razzano a.k.a. srazzano
 // @icon         https://raw.githubusercontent.com/Razzano/Images/master/googleicon64.png
@@ -14,6 +14,9 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_openInTab
+// @grant        GM_registerMenuCommand
+// @grant        GM_unregisterMenuCommand
+// @grant        GM_addValueChangeListener
 // @run-at       document-start
 // ==/UserScript==
 
@@ -21,17 +24,78 @@
   'use strict';
 
   // ==========================================================================
-  // SETTINGS: 1 / true = on, 0 / false = off
+  // SETTINGS (stored values, toggled from the Tampermonkey menu, applied live)
   // ==========================================================================
-  const ALL_LINKS_IN_NEW_TAB = true;
-  const ORGANIZE_MENU_APPS = true;
-  const REMOVE_GOOGLE_SEARCH_SUFFIX = true;
-  const VOICE_SEARCH_NEW_TAB = true;
-  const LENS_RESULTS_NEW_TAB = true;
+  const settingsCache = new Map();
+  const Settings = {
+    get(key, fallback) {
+      if (!settingsCache.has(key)) settingsCache.set(key, GM_getValue(key));
+      const value = settingsCache.get(key);
+      return value === undefined ? fallback : value;
+    },
+    set(key, value) {
+      settingsCache.set(key, value);
+      GM_setValue(key, value);
+      return value;
+    }
+  };
+
+  const DEFAULTS = {
+    ALL_LINKS_IN_NEW_TAB: true,
+    ORGANIZE_MENU_APPS: true,
+    REMOVE_GOOGLE_SEARCH_SUFFIX: true,
+    VOICE_SEARCH_NEW_TAB: true,
+    LENS_RESULTS_NEW_TAB: true
+  };
+
+  const LABELS = {
+    ALL_LINKS_IN_NEW_TAB: 'All links in new tab',
+    ORGANIZE_MENU_APPS: 'Organize menu apps',
+    REMOVE_GOOGLE_SEARCH_SUFFIX: 'Remove Google search suffix',
+    VOICE_SEARCH_NEW_TAB: 'Voice search in new tab',
+    LENS_RESULTS_NEW_TAB: 'Lens results in new tab'
+  };
+
+  const cfg = {};
+  for (const key of Object.keys(DEFAULTS)) cfg[key] = Settings.get(key, DEFAULTS[key]);
+
+  // Only the top frame registers the menu, so a click always runs in the page you see.
+  // Iframes get the change through GM_addValueChangeListener below.
+  const IS_TOP = window === window.top;
+  const registerMenu = () => {
+    if (!IS_TOP) return;
+    for (const key of Object.keys(DEFAULTS)) {
+      // Re-registering with the same id updates the label in place;
+      // autoClose:false keeps the menu open so you see the ✅/❌ flip.
+      GM_registerMenuCommand(
+        `${cfg[key] ? '✅' : '❌'} ${LABELS[key]}`,
+        () => {
+          cfg[key] = Settings.set(key, !cfg[key]);
+          applySetting(key);
+          registerMenu();
+        },
+        { id: key, autoClose: false }
+      );
+    }
+  };
+  registerMenu();
+
+  // Keep other open Google tabs in sync when a setting changes elsewhere
+  if (typeof GM_addValueChangeListener === 'function') {
+    for (const key of Object.keys(DEFAULTS)) {
+      GM_addValueChangeListener(key, (name, oldValue, newValue, remote) => {
+        if (!remote) return;
+        settingsCache.set(name, newValue);
+        cfg[name] = newValue === undefined ? DEFAULTS[name] : newValue;
+        applySetting(name);
+        registerMenu();
+      });
+    }
+  }
 
   const REL = 'noopener noreferrer';
-
   const LENS_MARKER = 'lens_newtab=1';
+  const NONE = '__none__';
 
   const isLensResultUrl = (url) => {
     try {
@@ -44,15 +108,11 @@
   };
 
   const handleLensResultImmediate = () => {
-    if (!LENS_RESULTS_NEW_TAB) return false;
+    if (!cfg.LENS_RESULTS_NEW_TAB) return false;
     if (!isLensResultUrl(location.href)) return false;
     if (location.search.includes(LENS_MARKER)) return false;
     const sep = location.search.includes('?') ? '&' : '?';
     const newUrl = location.href + sep + LENS_MARKER;
-    // NOTE: do NOT call window.stop() here. It aborts the in-flight page load
-    // and can leave co-running page scripts (e.g. the Dashboard clock's rAF
-    // loop on a search-results page) in a half-started state. Opening the new
-    // tab first, then replacing this tab below, is sufficient.
     let opened = false;
     try {
       if (typeof GM_openInTab === 'function') { GM_openInTab(newUrl, { active: true, insert: true }); opened = true; }
@@ -70,7 +130,6 @@
   };
 
   if (handleLensResultImmediate()) return;
-
   let lastLensUrl = location.href;
   const watchLensUrl = () => {
     if (location.href === lastLensUrl) return;
@@ -128,7 +187,7 @@
   const setFormVoiceTarget = (form) => {
     if (!form) return form;
     try {
-      if (VOICE_SEARCH_NEW_TAB) form.target = '_blank';
+      if (cfg.ALL_LINKS_IN_NEW_TAB && cfg.VOICE_SEARCH_NEW_TAB) form.target = '_blank';
       else form.removeAttribute('target');
     } catch (_) {}
     return form;
@@ -143,26 +202,44 @@
     return openSearchPrivileged(query);
   };
 
+  // Remembers each link's original target/rel so it can be restored when the setting is turned off
   const forceNewTab = (link) => {
+    if (!cfg.ALL_LINKS_IN_NEW_TAB) return;
     if (!link || link.dataset.newTabFixed) return;
     link.dataset.newTabFixed = '1';
+    link.dataset.origTarget = link.getAttribute('target') ?? NONE;
+    link.dataset.origRel = link.getAttribute('rel') ?? NONE;
     if (link.target !== '_blank') link.target = '_blank';
     link.rel = REL;
   };
 
+  const restoreLinks = () => {
+    for (const link of document.querySelectorAll('a[data-new-tab-fixed]')) {
+      const t = link.dataset.origTarget;
+      const r = link.dataset.origRel;
+      if (t === NONE || t === undefined) link.removeAttribute('target');
+      else link.setAttribute('target', t);
+      if (r === NONE || r === undefined) link.removeAttribute('rel');
+      else link.setAttribute('rel', r);
+      delete link.dataset.newTabFixed;
+      delete link.dataset.origTarget;
+      delete link.dataset.origRel;
+    }
+  };
+
   const fixLinksIn = (root) => {
-    if (!ALL_LINKS_IN_NEW_TAB || !root) return;
+    if (!cfg.ALL_LINKS_IN_NEW_TAB || !root) return;
     if (root.nodeType !== 1) return;
     if (root.matches?.('a[href]')) forceNewTab(root);
     for (const link of root.querySelectorAll('a[href]')) forceNewTab(link);
   };
 
   const initSearchBox = () => {
-    if (!ALL_LINKS_IN_NEW_TAB) return;
     const searchBox = document.querySelector('textarea[name="q"]');
     if (!searchBox || searchBox.dataset.searchFixed) return;
     searchBox.dataset.searchFixed = '1';
     searchBox.addEventListener('keydown', (e) => {
+      if (!cfg.ALL_LINKS_IN_NEW_TAB) return;
       if (e.key !== 'Enter' || e.shiftKey) return;
       e.preventDefault();
       e.stopPropagation();
@@ -188,7 +265,7 @@
     '[aria-label*="speak" i], [data-ved*="voice"]';
 
   document.addEventListener('mousedown', (e) => {
-    if (!ALL_LINKS_IN_NEW_TAB || e.button !== 0) return;
+    if (!cfg.ALL_LINKS_IN_NEW_TAB || e.button !== 0) return;
     suggestionHandled = false;
     if (e.target.closest(MEDIA_GUARD)) return;
     const listbox = e.target.closest('ul[role="listbox"], [role="listbox"]');
@@ -206,7 +283,7 @@
   }, true);
 
   document.addEventListener('click', (e) => {
-    if (!ALL_LINKS_IN_NEW_TAB) return;
+    if (!cfg.ALL_LINKS_IN_NEW_TAB) return;
     if (isAIMode(e.target)) return;
     if (suggestionHandled) {
       suggestionHandled = false;
@@ -225,7 +302,8 @@
         e.stopPropagation();
         openSearch(searchBox.value);
         return;
-    } }
+      }
+    }
     const link = e.target.closest('a[href]');
     if (!link) return;
     if (
@@ -243,7 +321,7 @@
   let appsOrganized = false;
 
   const organizeGoogleApps = () => {
-    if (!ORGANIZE_MENU_APPS || appsOrganized) return;
+    if (!cfg.ORGANIZE_MENU_APPS || appsOrganized) return;
     const items = document.querySelectorAll('li[data-is-draggable="true"] span[data-text]');
     if (items.length < APP_ORDER_1.length + APP_ORDER_2.length) return;
     const byName = new Map();
@@ -287,12 +365,17 @@
     return true;
   };
 
+  const applyVoiceTargets = () => {
+    for (const f of document.querySelectorAll('form')) if (isSearchForm(f)) setFormVoiceTarget(f);
+  };
+
+  // Patched once; the patched methods check cfg on every call
   const patchFormMethods = () => {
     if (voicePatched) return;
     voicePatched = true;
     const nativeSubmit = HTMLFormElement.prototype.submit;
     HTMLFormElement.prototype.submit = function (...args) {
-      if (ALL_LINKS_IN_NEW_TAB && isSearchForm(this)) {
+      if (cfg.ALL_LINKS_IN_NEW_TAB && isSearchForm(this)) {
         if (voiceActive) { setFormVoiceTarget(this); voiceActive = false; }
         else if (openFromForm(this)) return;
       }
@@ -301,7 +384,7 @@
     if (HTMLFormElement.prototype.requestSubmit) {
       const nativeRequestSubmit = HTMLFormElement.prototype.requestSubmit;
       HTMLFormElement.prototype.requestSubmit = function (...args) {
-        if (ALL_LINKS_IN_NEW_TAB && isSearchForm(this)) {
+        if (cfg.ALL_LINKS_IN_NEW_TAB && isSearchForm(this)) {
           if (voiceActive) { setFormVoiceTarget(this); voiceActive = false; }
           else if (openFromForm(this)) return;
         }
@@ -309,9 +392,10 @@
       };
     }
   };
+  patchFormMethods();
 
   document.addEventListener('submit', (e) => {
-    if (!ALL_LINKS_IN_NEW_TAB) return;
+    if (!cfg.ALL_LINKS_IN_NEW_TAB) return;
     if (voiceActive) {
       setFormVoiceTarget(e.target);
       voiceActive = false;
@@ -326,7 +410,7 @@
   }, true);
 
   document.addEventListener('click', (e) => {
-    if (!ALL_LINKS_IN_NEW_TAB) return;
+    if (!cfg.ALL_LINKS_IN_NEW_TAB) return;
     const mic = e.target.closest(
       '[aria-label*="voice" i], [aria-label*="mic" i], [aria-label*="Speak" i], ' +
       '[data-ved*="voice"], button[aria-label*="Search by voice" i], div[role="button"][aria-label*="voice" i]'
@@ -345,22 +429,18 @@
     voiceWatchTimer = setInterval(() => {
       const box = document.querySelector('textarea[name="q"], input[name="q"]');
       const val = box?.value.trim() ?? '';
-      if (voiceActive && val && val !== lastValue && !location.pathname.startsWith('/search')) {
-        lastValue = val;
-      }
+      if (voiceActive && val && val !== lastValue && !location.pathname.startsWith('/search')) lastValue = val;
       if (Date.now() - start > 15000) {
         clearInterval(voiceWatchTimer);
         voiceWatchTimer = null;
         voiceActive = false;
       }
-      if (location.pathname.startsWith('/search')) {
-        voiceActive = false;
-      }
+      if (location.pathname.startsWith('/search')) voiceActive = false;
     }, 300);
   };
 
   document.addEventListener('click', (e) => {
-    if (!ALL_LINKS_IN_NEW_TAB) return;
+    if (!cfg.ALL_LINKS_IN_NEW_TAB) return;
     const mic = e.target.closest('[aria-label*="voice" i], [aria-label*="mic" i]');
     if (mic) watchVoiceResult();
   }, true);
@@ -370,36 +450,69 @@
       for (const node of m.addedNodes) {
         if (node.nodeType !== 1) continue;
         fixLinksIn(node);
-        if (node.matches?.('textarea[name="q"]') || node.querySelector?.('textarea[name="q"]')) {
-          initSearchBox();
-      } }
-      if (m.type === 'attributes' && m.target.matches?.('a[href]')) {
-        forceNewTab(m.target);
-    } }
-    if (ORGANIZE_MENU_APPS && !appsOrganized) organizeGoogleApps();
+        if (node.matches?.('textarea[name="q"]') || node.querySelector?.('textarea[name="q"]')) initSearchBox();
+      }
+      if (m.type === 'attributes' && cfg.ALL_LINKS_IN_NEW_TAB && m.target.matches?.('a[href]')) forceNewTab(m.target);
+    }
+    if (cfg.ORGANIZE_MENU_APPS && !appsOrganized) organizeGoogleApps();
   });
 
+  const TITLE_SUFFIX = ' - Google Search';
+
   function cleanGoogleTitle() {
-    if (!REMOVE_GOOGLE_SEARCH_SUFFIX) return;
-    if (document.title.endsWith(' - Google Search')) {
-      document.title = document.title.replace(' - Google Search', '');
-  } }
+    if (!cfg.REMOVE_GOOGLE_SEARCH_SUFFIX) return;
+    if (document.title.endsWith(TITLE_SUFFIX)) document.title = document.title.replace(TITLE_SUFFIX, '');
+  }
+
+  function restoreGoogleTitle() {
+    if (!location.pathname.startsWith('/search')) return;
+    if (document.title && !document.title.endsWith(TITLE_SUFFIX)) document.title += TITLE_SUFFIX;
+  }
+
+  let titleWatched = false;
+  const watchTitle = () => {
+    if (titleWatched) return;
+    const titleElement = document.querySelector('title');
+    if (!titleElement) return;
+    titleWatched = true;
+    new MutationObserver(cleanGoogleTitle).observe(titleElement, { childList: true });
+  };
 
   cleanGoogleTitle();
+  watchTitle();
 
-  const titleElement = document.querySelector('title');
-  if (titleElement) {
-    new MutationObserver(cleanGoogleTitle).observe(titleElement, { childList: true });
+  // Applies a changed setting to the current page right away
+  function applySetting(key) {
+    switch (key) {
+      case 'ALL_LINKS_IN_NEW_TAB':
+        if (cfg[key]) fixLinksIn(document.body);
+        else restoreLinks();
+        applyVoiceTargets();
+        break;
+      case 'VOICE_SEARCH_NEW_TAB':
+        applyVoiceTargets();
+        break;
+      case 'ORGANIZE_MENU_APPS':
+        // Turning on reorders now (if the menu is open, otherwise when it opens).
+        // Turning off takes effect on the next page load.
+        if (cfg[key]) { appsOrganized = false; organizeGoogleApps(); }
+        break;
+      case 'REMOVE_GOOGLE_SEARCH_SUFFIX':
+        if (cfg[key]) cleanGoogleTitle();
+        else restoreGoogleTitle();
+        break;
+      case 'LENS_RESULTS_NEW_TAB':
+        // Checked on every navigation, nothing to apply now
+        break;
+    }
   }
 
   const start = () => {
-    if (ALL_LINKS_IN_NEW_TAB) {
-      patchFormMethods();
-      fixLinksIn(document.body);
-      initSearchBox();
-      for (const f of document.querySelectorAll('form')) if (isSearchForm(f)) setFormVoiceTarget(f);
-    }
-    if (ORGANIZE_MENU_APPS) organizeGoogleApps();
+    watchTitle();
+    fixLinksIn(document.body);
+    initSearchBox();
+    applyVoiceTargets();
+    if (cfg.ORGANIZE_MENU_APPS) organizeGoogleApps();
 
     observer.observe(document.body, {
       childList: true,
