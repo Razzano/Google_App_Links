@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google Apps Links - Open in New Tab
 // @namespace    srazzano
-// @version      1.6.1
+// @version      1.6.2
 // @description  Forces Google Home Page links to open in new tabs
 // @license      MIT
 // @author       Sonny Razzano a.k.a. srazzano
@@ -21,12 +21,15 @@
 // ==/UserScript==
 
 (() => {
+
   'use strict';
 
   // ==========================================================================
   // SETTINGS (stored values, toggled from the Tampermonkey menu, applied live)
   // ==========================================================================
+
   const settingsCache = new Map();
+
   const Settings = {
     get(key, fallback) {
       if (!settingsCache.has(key)) settingsCache.set(key, GM_getValue(key));
@@ -57,18 +60,15 @@
   };
 
   const cfg = {};
+
   for (const key of Object.keys(DEFAULTS)) cfg[key] = Settings.get(key, DEFAULTS[key]);
 
-  // Only the top frame registers the menu, so a click always runs in the page you see.
-  // Iframes get the change through GM_addValueChangeListener below.
   const IS_TOP = window === window.top;
+
   const registerMenu = () => {
     if (!IS_TOP) return;
     for (const key of Object.keys(DEFAULTS)) {
-      // Re-registering with the same id updates the label in place;
-      // autoClose:false keeps the menu open so you see the ✅/❌ flip.
-      GM_registerMenuCommand(
-        `${cfg[key] ? '✅' : '❌'} ${LABELS[key]}`,
+      GM_registerMenuCommand(`${cfg[key] ? '✅' : '❌'} ${LABELS[key]}`,
         () => {
           cfg[key] = Settings.set(key, !cfg[key]);
           applySetting(key);
@@ -78,9 +78,9 @@
       );
     }
   };
+
   registerMenu();
 
-  // Keep other open Google tabs in sync when a setting changes elsewhere
   if (typeof GM_addValueChangeListener === 'function') {
     for (const key of Object.keys(DEFAULTS)) {
       GM_addValueChangeListener(key, (name, oldValue, newValue, remote) => {
@@ -90,8 +90,7 @@
         applySetting(name);
         registerMenu();
       });
-    }
-  }
+  } }
 
   const REL = 'noopener noreferrer';
   const LENS_MARKER = 'lens_newtab=1';
@@ -202,7 +201,6 @@
     return openSearchPrivileged(query);
   };
 
-  // Remembers each link's original target/rel so it can be restored when the setting is turned off
   const forceNewTab = (link) => {
     if (!cfg.ALL_LINKS_IN_NEW_TAB) return;
     if (!link || link.dataset.newTabFixed) return;
@@ -302,8 +300,7 @@
         e.stopPropagation();
         openSearch(searchBox.value);
         return;
-      }
-    }
+    } }
     const link = e.target.closest('a[href]');
     if (!link) return;
     if (
@@ -319,6 +316,7 @@
   const APP_ORDER_2 = ['Account', 'Arts and Culture', 'Books', 'Blogger', 'Chat', 'Chrome Web Store', 'Drive'];
 
   let appsOrganized = false;
+  let appsSnapshot = null;
 
   const organizeGoogleApps = () => {
     if (!cfg.ORGANIZE_MENU_APPS || appsOrganized) return;
@@ -340,12 +338,29 @@
       appsOrganized = true;
       return;
     }
+    appsSnapshot = {
+      menu1, menu2,
+      kids1: Array.from(menu1.children),
+      kids2: Array.from(menu2.children),
+    };
     const frag1 = document.createDocumentFragment();
     const frag2 = document.createDocumentFragment();
     for (const app of apps1) frag1.append(app);
     for (const app of apps2) frag2.append(app);
     menu2.prepend(frag1);
     menu1.prepend(frag2);
+  };
+
+  const restoreGoogleApps = () => {
+    appsOrganized = false;
+    const s = appsSnapshot;
+    appsSnapshot = null;
+    if (!s || !s.menu1.isConnected || !s.menu2.isConnected) return;
+    const all = [...s.kids1, ...s.kids2];
+    if (s.menu1.children.length + s.menu2.children.length !== all.length) return;
+    if (!all.every((n) => n.parentElement === s.menu1 || n.parentElement === s.menu2)) return;
+    s.menu1.replaceChildren(...s.kids1);
+    s.menu2.replaceChildren(...s.kids2);
   };
 
   let voicePatched = false;
@@ -369,7 +384,6 @@
     for (const f of document.querySelectorAll('form')) if (isSearchForm(f)) setFormVoiceTarget(f);
   };
 
-  // Patched once; the patched methods check cfg on every call
   const patchFormMethods = () => {
     if (voicePatched) return;
     voicePatched = true;
@@ -470,6 +484,7 @@
   }
 
   let titleWatched = false;
+
   const watchTitle = () => {
     if (titleWatched) return;
     const titleElement = document.querySelector('title');
@@ -481,7 +496,6 @@
   cleanGoogleTitle();
   watchTitle();
 
-  // Applies a changed setting to the current page right away
   function applySetting(key) {
     switch (key) {
       case 'ALL_LINKS_IN_NEW_TAB':
@@ -493,19 +507,16 @@
         applyVoiceTargets();
         break;
       case 'ORGANIZE_MENU_APPS':
-        // Turning on reorders now (if the menu is open, otherwise when it opens).
-        // Turning off takes effect on the next page load.
         if (cfg[key]) { appsOrganized = false; organizeGoogleApps(); }
+        else restoreGoogleApps();
         break;
       case 'REMOVE_GOOGLE_SEARCH_SUFFIX':
         if (cfg[key]) cleanGoogleTitle();
         else restoreGoogleTitle();
         break;
       case 'LENS_RESULTS_NEW_TAB':
-        // Checked on every navigation, nothing to apply now
         break;
-    }
-  }
+  } }
 
   const start = () => {
     watchTitle();
@@ -513,7 +524,6 @@
     initSearchBox();
     applyVoiceTargets();
     if (cfg.ORGANIZE_MENU_APPS) organizeGoogleApps();
-
     observer.observe(document.body, {
       childList: true,
       subtree: true,
