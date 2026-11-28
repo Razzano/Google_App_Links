@@ -1,15 +1,13 @@
 // ==UserScript==
 // @name         Google Apps Links - Open in New Tab
 // @namespace    srazzano
-// @version      1.6.2
+// @version      1.6.3
 // @description  Forces Google Home Page links to open in new tabs
 // @license      MIT
 // @author       Sonny Razzano a.k.a. srazzano
 // @icon         https://raw.githubusercontent.com/Razzano/Images/master/googleicon64.png
 // @match        https://*.google.com/*
 // @match        https://google.com/*
-// @match        https://lens.google.com/*
-// @match        https://*.lens.google.com/*
 // @grant        GM_addStyle
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -17,6 +15,9 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM_unregisterMenuCommand
 // @grant        GM_addValueChangeListener
+// @noframes
+// @downloadURL  https://update.greasyfork.org/scripts/593134/Google%20Apps%20Links%20-%20Open%20in%20New%20Tab.user.js
+// @updateURL    https://update.greasyfork.org/scripts/593134/Google%20Apps%20Links%20-%20Open%20in%20New%20Tab.meta.js
 // @run-at       document-start
 // ==/UserScript==
 
